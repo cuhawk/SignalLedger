@@ -100,3 +100,30 @@ def test_write_gate_red_team():
         "replay", "scope_escalation", "state_drift", "atomic_race", "hostile_instruction",
         "wildcard", "read_only",
     )} <= passed
+
+
+def test_go_alert_hash_dedup_matches_python(cli, tmp_path):
+    from analytics.engine import evaluate
+
+    query = {"id": "dedup", "args": [], "dedup_ms": 300,
+             "sql": "SELECT 'event', ms FROM (VALUES (1000), (1000), (1299), (1300)) t(ms) ORDER BY ms"}
+    result = command(cli, "detect", "--queries", write(tmp_path / "queries", [query]))
+    assert result.returncode == 0, result.stderr
+    assert [(row["Rule"], row["EventID"], row["TimeMS"]) for row in json.loads(result.stdout)] == evaluate([query])
+
+
+def test_cli_consistency(cli, tmp_path, signed):
+    pub, collect, old, _ = signed
+    records = [*old["records"], {**old["records"][-1], "data": "delta"}]
+    window = write(tmp_path / "cumulative", records)
+    result = command(cli, *collect, "--window", window)
+    assert result.returncode == 0, result.stderr
+    new = json.loads(result.stdout)
+    heads = ["--old-root", write(tmp_path / "old", old["root"]),
+             "--new-root", write(tmp_path / "new", new["root"]), "--pubkey", pub]
+    result = command(cli, "prove-consistency", *heads, "--window", window)
+    assert result.returncode == 0, result.stderr
+    proof = write(tmp_path / "proof", json.loads(result.stdout))
+    assert command(cli, "verify-consistency", *heads, "--proof", proof).stdout.strip() == "PASS"
+    reversed_heads = ["--old-root", heads[3], "--new-root", heads[1], "--pubkey", pub]
+    assert command(cli, "verify-consistency", *reversed_heads, "--proof", proof).returncode == 1

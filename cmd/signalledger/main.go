@@ -64,9 +64,11 @@ func verify(args []string) error {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: signalledger {ingest|detect|collect|verify}")
+		return errors.New("usage: signalledger {ingest|detect|collect|verify|prove-consistency|verify-consistency}")
 	}
 	switch args[0] {
+	case "prove-consistency", "verify-consistency":
+		return consistencyCommand(args[0], args[1:])
 	case "verify":
 		if err := verify(args[1:]); err != nil {
 			return err
