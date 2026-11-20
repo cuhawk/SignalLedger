@@ -30,3 +30,14 @@ Benign-only false positives across all rules: 0/10 events (0.000 alerts per 1,00
 
 `signalledger rule check` with `mixed.fixture.json` reported 8 rules, 12 fixture events, 2 findings and exited 0.
 `signalledger rule check` with `benign.fixture.json` reported 8 rules, 10 fixture events, 0 findings and exited 0.
+
+## Auditor posture fixture
+
+| Case | Passing controls | Verified Merkle records | Verified oversight receipts | Report wall time |
+| --- | ---: | ---: | ---: | ---: |
+| verified | 8/27 | 4 | 1 | 94.9 ms |
+| missing | 3/27 | 2 | 0 | 90.2 ms |
+| unapproved | 3/27 | 4 | 0 | 94.3 ms |
+| invalid_approval_signature | 3/27 | 4 | 0 | 86.3 ms |
+| invalid_window | 0/27 | 0 | 0 | 89.5 ms |
+| unsigned_detection | 4/27 | 2 | 1 | 82.9 ms |

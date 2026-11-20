@@ -10,6 +10,7 @@ import sys
 from tempfile import TemporaryDirectory
 from time import perf_counter
 
+from analytics.compliance_fixture import compliance_cases
 from analytics.engine import ROOT, compile_rules, evaluate, export_parquet
 from analytics.fixtures import traces
 from analytics.rulecheck import read_fixture
@@ -77,6 +78,24 @@ def native_metrics(base, cli):
     return rows
 
 
+def compliance_metrics(base, cli):
+    if cli is None:
+        return []
+    base.mkdir()
+    rows = [
+        "", "## Auditor posture fixture", "",
+        "| Case | Passing controls | Verified Merkle records | Verified oversight receipts | Report wall time |",
+        "| --- | ---: | ---: | ---: | ---: |",
+    ]
+    for case, report, _, elapsed_ms in compliance_cases(base, cli.resolve()):
+        controls = report["controls"]
+        passing = sum(control["posture"] == "PASS" for control in controls)
+        oversight = next(control for control in controls if control["id"] == "Article 14")
+        rows.append(f"| {case} | {passing}/{len(controls)} | {report['verified_records']} | "
+                    f"{oversight['verified_approvals']} | {elapsed_ms:.1f} ms |")
+    return rows
+
+
 def render(report, cli=None):
     messages = [json.loads(line) for line in report.read_text().splitlines()]
     passed = {msg.get("Test") for msg in messages
@@ -93,6 +112,7 @@ def render(report, cli=None):
             ("base-", "vpn-", "readonly-", "sender-"))]
         benign_alerts = evaluate(compile_rules(export_parquet(baseline, base / "benign")))
         native = native_metrics(base, cli)
+        posture = compliance_metrics(base / "compliance", cli)
     slow = [i for i in incidents if i.rule == SLOW_RULE]
     legacy_hits = len({event for rule, event, _ in legacy if rule == "password_spray"}
                       & set().union(*(i.triggers for i in slow)))
@@ -124,7 +144,7 @@ def render(report, cli=None):
         f"{len(CONSISTENCY_REQUIRED & passed)}/{len(CONSISTENCY_REQUIRED)}.",
         "Consistency prefix matrix and RFC 6962 proof-vector test passed.",
     ])
-    return "\n".join([*lines, *native, ""])
+    return "\n".join([*lines, *native, *posture, ""])
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -147,5 +148,28 @@ func TestConcurrentApproval(t *testing.T) {
 	}
 	if allowed != 1 || f.writes != 1 {
 		t.Fatalf("allowed=%d writes=%d", allowed, f.writes)
+	}
+}
+
+func TestAuditedApprovalReceipt(t *testing.T) {
+	gate, _, audit, request, approval := setup(t)
+	if err := gate.Execute(context.Background(), request, approval); err != nil {
+		t.Fatal(err)
+	}
+	if len(audit.events) != 2 || audit.events[0].Kind != "connector_write_authorized" ||
+		audit.events[1].Kind != "connector_write" {
+		t.Fatalf("unexpected audit events: %v", audit.events)
+	}
+	raw, err := merkle.Canonical(audit.events[0].Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt ApprovalReceipt
+	if err := json.Unmarshal(raw, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyApproval(request, Approval{Claims: receipt.Claims, Signatures: receipt.Signatures},
+		gate.Approvers, audit.events[0].Time); err != nil {
+		t.Fatal(err)
 	}
 }
