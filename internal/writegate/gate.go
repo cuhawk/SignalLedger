@@ -162,22 +162,8 @@ func (g *Gate) execute(ctx context.Context, r Request, a Approval) error {
 	}
 	claims := a.Claims
 	now := g.now()
-	if claims.Request != r || !opaqueID.MatchString(claims.ID) || !claims.Expiry.After(now) || claims.Expiry.After(now.Add(5*time.Minute)) {
-		return errors.New("approval scope or expiry invalid")
-	}
-	if claims.Approvers[0] == claims.Approvers[1] {
-		return errors.New("two distinct approvers required")
-	}
-	first, second := g.Approvers[claims.Approvers[0]], g.Approvers[claims.Approvers[1]]
-	if len(first) != ed25519.PublicKeySize || len(second) != ed25519.PublicKeySize || first.Equal(second) {
-		return errors.New("two distinct trusted approval keys required")
-	}
-	raw, err := merkle.Canonical(claims)
-	if err != nil {
+	if err := VerifyApproval(r, a, g.Approvers, now); err != nil {
 		return err
-	}
-	if !ed25519.Verify(first, raw, a.Signatures[0]) || !ed25519.Verify(second, raw, a.Signatures[1]) {
-		return errors.New("invalid approval signatures")
 	}
 	plan, err := snapshot(ctx, c, r)
 	if err != nil {
@@ -200,7 +186,7 @@ func (g *Gate) execute(ctx context.Context, r Request, a Approval) error {
 	if !plan.Before.Active {
 		return errors.New("target already inactive")
 	}
-	if err = g.Audit.Append(ctx, merkle.Record{Time: now, Kind: "connector_write_authorized", Data: claims}); err != nil {
+	if err = g.Audit.Append(ctx, merkle.Record{Time: now, Kind: "connector_write_authorized", Data: ApprovalReceipt{Claims: claims, Signatures: a.Signatures}}); err != nil {
 		return err
 	}
 	if !claims.Expiry.After(g.now()) {
@@ -223,6 +209,36 @@ func (g *Gate) execute(ctx context.Context, r Request, a Approval) error {
 	}
 	if after.Active != plan.AfterActive || after.Revision == "" || after.Revision == plan.Before.Revision {
 		return errors.New("mutation readback mismatch")
+	}
+	return nil
+}
+
+// ApprovalReceipt preserves the original claims fields and adds the two signatures.
+type ApprovalReceipt struct {
+	Claims
+	Signatures [2][]byte
+}
+
+// VerifyApproval checks approval scope, expiry relative to the authorization time,
+// and signatures from two distinct trusted approvers.
+func VerifyApproval(r Request, a Approval, approvers map[string]ed25519.PublicKey, now time.Time) error {
+	claims := a.Claims
+	if claims.Request != r || !opaqueID.MatchString(claims.ID) || !claims.Expiry.After(now) || claims.Expiry.After(now.Add(5*time.Minute)) {
+		return errors.New("approval scope or expiry invalid")
+	}
+	if claims.Approvers[0] == claims.Approvers[1] {
+		return errors.New("two distinct approvers required")
+	}
+	first, second := approvers[claims.Approvers[0]], approvers[claims.Approvers[1]]
+	if len(first) != ed25519.PublicKeySize || len(second) != ed25519.PublicKeySize || first.Equal(second) {
+		return errors.New("two distinct trusted approval keys required")
+	}
+	raw, err := merkle.Canonical(claims)
+	if err != nil {
+		return err
+	}
+	if !ed25519.Verify(first, raw, a.Signatures[0]) || !ed25519.Verify(second, raw, a.Signatures[1]) {
+		return errors.New("invalid approval signatures")
 	}
 	return nil
 }

@@ -19,6 +19,8 @@ To regenerate [measured results](benchmarks/RESULTS.md), run `go test -race -v -
 
 On the synthetic benchmark, distributed slow-spray recall rose from 0/3 with the single-source rule to 3/3 with the distributed rule. Median detection latency was 70 minutes of event time. DuckDB evaluation took 77.1 ms across 1,539 events. The benign baseline produced 0 false positives across 1,452 events. The Merkle suite rejected 6/6 signed-window tamper cases and 10/10 consistency tamper, truncation, and rollback cases. The consistency prefix matrix and RFC 6962 proof-vector test passed.
 
+The signed auditor fixture passed 8 of 27 control checks, verified 4 Merkle records and 1 oversight receipt, and took 94.9 ms end to end. Missing, unapproved, and invalid-signature receipt fixtures each passed 3 of 27 checks with 0 verified oversight receipts. The tampered window passed 0 of 27 checks with 0 verified Merkle records.
+
 On the native synthetic fixtures, each new rule detected its one labeled event with 0 ms of event-time latency. DuckDB evaluated the 12-event mixed fixture in 38.2 ms. The 10-event benign baseline produced 0 false positives. The CLI passed both fixtures and rejected malformed YAML and an incorrect expected finding set.
 
 ## Collect and detect

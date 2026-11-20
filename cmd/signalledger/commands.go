@@ -11,6 +11,7 @@ import (
 
 	_ "github.com/duckdb/duckdb-go/v2"
 
+	"github.com/cuhawk/SignalLedger/internal/compliance"
 	"github.com/cuhawk/SignalLedger/internal/detect"
 	"github.com/cuhawk/SignalLedger/internal/ingest"
 	"github.com/cuhawk/SignalLedger/internal/merkle"
@@ -40,31 +41,44 @@ func ingestCommand(args []string) error {
 func detectCommand(args []string) error {
 	f := flag.NewFlagSet("detect", flag.ContinueOnError)
 	bundle := f.String("queries", "", "trusted compiled SQL bundle")
+	evidence := f.Bool("evidence", false, "emit detection records for collect")
 	if err := f.Parse(args); err != nil {
 		return err
 	}
 	if *bundle == "" || f.NArg() != 0 {
 		return errors.New("provide queries")
 	}
-	input, err := os.Open(*bundle)
+	findings, err := runDetections(context.Background(), *bundle)
 	if err != nil {
 		return err
+	}
+	encoder := json.NewEncoder(os.Stdout)
+	if *evidence {
+		records := make([]merkle.Record, 0, len(findings))
+		for _, finding := range findings {
+			records = append(records, compliance.FindingRecord(finding))
+		}
+		return encoder.Encode(records)
+	}
+	return encoder.Encode(findings)
+}
+
+func runDetections(ctx context.Context, bundle string) ([]detect.Finding, error) {
+	input, err := os.Open(bundle)
+	if err != nil {
+		return nil, err
 	}
 	defer input.Close()
 	queries, err := detect.ReadQueries(input)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	db, err := sql.Open("duckdb", "")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer db.Close()
-	findings, err := detect.Run(context.Background(), db, queries)
-	if err != nil {
-		return err
-	}
-	return json.NewEncoder(os.Stdout).Encode(findings)
+	return detect.Run(ctx, db, queries)
 }
 
 func collectCommand(args []string) error {

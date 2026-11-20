@@ -1,22 +1,11 @@
 import base64
 import json
-import os
-from pathlib import Path
 import subprocess
 
 import pytest
 
 from analytics.engine import ROOT, compile_rules, export_parquet
 from analytics.benchmark import run_suite
-
-
-@pytest.fixture(scope="module")
-def cli(tmp_path_factory):
-    if binary := os.environ.get("SIGNALLEDGER_BIN"):
-        return Path(binary).resolve()
-    binary = tmp_path_factory.mktemp("bin") / "signalledger"
-    subprocess.run(["go", "build", "-o", str(binary), "./cmd/signalledger"], cwd=ROOT, check=True)
-    return binary
 
 
 def command(cli, *args):
