@@ -1,0 +1,15 @@
+title: Distributed slow password spray
+id: distributed_password_spray
+logsource:
+  category: authentication
+detection:
+  selection:
+    kind: login
+    outcome: failure
+  condition: selection
+correlation:
+  type: window
+  aggregate: count_distinct(actor_user)
+  threshold: 8
+  min_distinct_ips: 2
+  window_minutes: 90

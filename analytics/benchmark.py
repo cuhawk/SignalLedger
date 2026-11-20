@@ -15,6 +15,13 @@ REQUIRED = {
     "TestTamper/adjacent_window", "TestTamper/forged_signature", "TestTamper/empty_window",
 }
 
+CONSISTENCY_REQUIRED = {"TestConsistencyTamper/" + case for case in (
+    "tampered_hash", "reordered_proof", "truncated_proof", "extra_hash",
+    "forged_old_signature", "forged_new_signature", "rewritten_prefix",
+    "truncated_log", "rollback", "same_size_fork",
+)}
+SLOW_RULE = "distributed_password_spray"
+
 
 def run_suite(directory):
     events, incidents = traces()
@@ -30,15 +37,31 @@ def render(report):
     messages = [json.loads(line) for line in report.read_text().splitlines()]
     passed = {msg.get("Test") for msg in messages
               if msg.get("Action") == "pass" and msg.get("Package", "").endswith("/internal/merkle")}
-    if not REQUIRED <= passed or any(msg.get("Action") == "fail" for msg in messages):
+    if (not (REQUIRED | CONSISTENCY_REQUIRED | {"TestConsistencyPrefixes"}) <= passed
+            or any(msg.get("Action") == "fail" for msg in messages)):
         raise ValueError("missing successful tamper cases in executed Go test report")
     with TemporaryDirectory() as temp:
-        events, incidents, findings, elapsed = run_suite(Path(temp) / "parquet")
+        base = Path(temp)
+        events, incidents, findings, elapsed = run_suite(base / "parquet")
+        parquet = base / "parquet" / "day=*" / "*.parquet"
+        legacy = evaluate([q for q in compile_rules(parquet) if q["id"] != SLOW_RULE])
+        baseline = [event for event in events if event["metadata"]["uid"].startswith(
+            ("base-", "vpn-", "readonly-", "sender-"))]
+        benign_alerts = evaluate(compile_rules(export_parquet(baseline, base / "benign")))
+    slow = [i for i in incidents if i.rule == SLOW_RULE]
+    legacy_hits = len({event for rule, event, _ in legacy if rule == "password_spray"}
+                      & set().union(*(i.triggers for i in slow)))
+    slow_hits = len({event for rule, event, _ in findings if rule == SLOW_RULE}
+                    & set().union(*(i.triggers for i in slow)))
     lines = [
         "# Observed detection and tamper metrics", "",
         f"Synthetic events evaluated: {len(events)}. DuckDB query wall time: {elapsed:.1f} ms.", "",
-        "| Rule | TP | FP alerts | FN | Precision | Recall | Median event-time latency | FP/1k events |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        f"Distributed slow-spray recall on the same labeled incidents: {legacy_hits}/{len(slow)} "
+        f"with the single-source rule, {slow_hits}/{len(slow)} with the distributed rule.",
+        f"Benign baseline false positives: {len(benign_alerts)}/{len(baseline)} events "
+        f"({1000 * len(benign_alerts) / len(baseline):.3f} alerts per 1,000 events).", "",
+        "| Rule | Recall | Median event-time latency | FP/1k events |",
+        "| --- | ---: | ---: | ---: |",
     ]
     for rule in sorted({incident.rule for incident in incidents}):
         expected = [incident for incident in incidents if incident.rule == rule]
@@ -47,12 +70,15 @@ def render(report):
                   if (times := [ts for event, ts in alerts if event in i.triggers])]
         tp = len(delays)
         fp = sum(not any(event in i.triggers for i in expected) for event, _ in alerts)
-        fn = len(expected) - tp
         latency = f"{median(delays) / 1000:.1f} s" if delays else "—"
-        precision = f"{tp / (tp + fp):.1%}" if (tp + fp) else "—"
-        lines.append(f"| {rule} | {tp} | {fp} | {fn} | {precision} | "
+        lines.append(f"| {rule} | "
                      f"{tp / len(expected):.1%} | {latency} | {fp * 1000 / len(events):.3f} |")
-    lines.extend(["", f"Tamper attempts rejected: {len(REQUIRED & passed)}/{len(REQUIRED)}.", ""])
+    lines.extend([
+        "", f"Signed-window tamper attempts rejected: {len(REQUIRED & passed)}/{len(REQUIRED)}.",
+        f"Consistency tamper, truncation and rollback cases rejected: "
+        f"{len(CONSISTENCY_REQUIRED & passed)}/{len(CONSISTENCY_REQUIRED)}.",
+        "Consistency prefix matrix and RFC 6962 proof-vector test: passed.", "",
+    ])
     return "\n".join(lines)
 
 

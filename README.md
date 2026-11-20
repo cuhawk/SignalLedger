@@ -17,6 +17,8 @@ SIGNALLEDGER_BIN=/tmp/signalledger python -m pytest -v analytics
 
 To regenerate [measured results](benchmarks/RESULTS.md), run `go test -race -v -count=1 -json ./... > /tmp/signalledger-go.jsonl`, then `python -m analytics.benchmark --go-report /tmp/signalledger-go.jsonl`.
 
+On the synthetic benchmark, distributed slow-spray recall rose from 0/3 with the single-source rule to 3/3 with the distributed rule. Median detection latency was 70 minutes of event time. DuckDB evaluation took 133.3 ms across 1,539 events. The benign baseline produced 0 false positives across 1,452 events. The Merkle suite rejected 6/6 signed-window tamper cases and 10/10 consistency tamper, truncation, and rollback cases. The consistency prefix matrix and RFC 6962 proof-vector test passed.
+
 ## Collect and detect
 
 Provide a read-scoped bearer in `SIGNALLEDGER_AUDIT_TOKEN` and keep a separate journal per tenant and feed. Run `ingest` on a schedule. `--since` sets the earliest timestamp eligible for collection. The collector resumes a persisted page cursor and overlaps completed scans by up to 24 hours. Each immutable JSONL batch stores accepted events, the next cursor, and counts for schema rejects, duplicates and events outside the scan window.
@@ -40,7 +42,7 @@ python -m analytics.engine compile 'data/snapshot-001/day=*/*.parquet' > /tmp/qu
 python -m analytics.engine run 'data/snapshot-001/day=*/*.parquet'
 ```
 
-Add `--journal` once per additional feed directory to include multiple feeds from the same tenant. The Parquet exporter publishes a new snapshot directory atomically. The partition rows retain the normalized OCSF record and expose typed detection fields. The rule compiler supports the selection and correlation forms used in `rules/`. It binds Parquet paths, selection values, thresholds, patterns and allowlists as SQL parameters. Treat compiled SQL bundles as trusted deployment artifacts. Geo, ASN, device and token correlations require corresponding source fields or upstream enrichment. Review the sample corporate egress allowlist before use. The synthetic suite covers public and private shares, reissued event IDs for the same token observation, and slow spray beyond the configured detection window.
+Add `--journal` once per additional feed directory to include multiple feeds from the same tenant. The Parquet exporter publishes a new snapshot directory atomically. The partition rows retain the normalized OCSF record and expose typed detection fields. The rule compiler supports the selection and correlation forms used in `rules/`. It binds Parquet paths, selection values, thresholds, patterns and allowlists as SQL parameters. Treat compiled SQL bundles as trusted deployment artifacts. Geo, ASN, device and token correlations require corresponding source fields or upstream enrichment. Review the sample corporate egress allowlist before use. The synthetic suite covers public and private shares, reissued event IDs for the same token observation, and distributed slow spray.
 
 ## Gate writes and verify evidence
 

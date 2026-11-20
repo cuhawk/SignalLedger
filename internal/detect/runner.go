@@ -3,16 +3,19 @@ package detect
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 )
 
 type Query struct {
-	ID   string `json:"id"`
-	SQL  string `json:"sql"`
-	Args []any  `json:"args"`
+	ID      string `json:"id"`
+	SQL     string `json:"sql"`
+	Args    []any  `json:"args"`
+	DedupMS int64  `json:"dedup_ms,omitempty"`
 }
 
 type Finding struct {
@@ -55,12 +58,27 @@ func ReadQueries(r io.Reader) ([]Query, error) {
 // Run uses the caller's DuckDB database/sql connection and the trusted compiler's query bundle.
 func Run(ctx context.Context, db *sql.DB, queries []Query) ([]Finding, error) {
 	var findings []Finding
+	last := make(map[[32]byte]int64)
 	for _, query := range queries {
 		matches, err := runQuery(ctx, db, query)
 		if err != nil {
 			return nil, fmt.Errorf("rule %s: %w", query.ID, err)
 		}
-		findings = append(findings, matches...)
+		if query.DedupMS < 0 {
+			return nil, fmt.Errorf("rule %s: negative dedup window", query.ID)
+		}
+		for _, match := range matches {
+			if query.DedupMS > 0 {
+				// Length-prefix the rule to distinguish arbitrary rule and event IDs.
+				digest := sha256.Sum256([]byte(strconv.Itoa(len(match.Rule)) + ":" + match.Rule + match.EventID))
+				if previous, ok := last[digest]; ok && (match.TimeMS < previous ||
+					uint64(match.TimeMS)-uint64(previous) < uint64(query.DedupMS)) {
+					continue
+				}
+				last[digest] = match.TimeMS
+			}
+			findings = append(findings, match)
+		}
 	}
 	return findings, nil
 }

@@ -47,13 +47,14 @@ def traces():
         add(f"sender-{day}", base + MIN, "approved-integration", kind="oauth_grant",
             scope="unrelated/Calendar.ReadWrite")
         begin = base + 720 * MIN
+        slow_begin = base + 960 * MIN
         for i in range(8):
             add(f"spray-{day}-{i}", begin + i * MIN, f"spray-user-{i}",
                 outcome="failure", ip="203.0.113.11")
-            add(f"slow-{day}-{i}", begin + i * 10 * MIN, f"slow-user-{i}",
-                outcome="failure", ip="203.0.113.12")
+            add(f"slow-{day}-{i}", slow_begin + i * 10 * MIN, f"slow-user-{i}",
+                outcome="failure", ip=f"203.0.113.{12 + i % 4}")
         mark("password_spray", begin, f"spray-{day}-7")
-        mark("password_spray", begin, f"slow-{day}-7")
+        mark("distributed_password_spray", slow_begin, f"slow-{day}-7")
         for i in range(3):
             add(f"deny-{day}-{i}", begin + i * MIN, "fatigue", "mfa_push", "deny")
         add(f"accept-{day}", begin + 3 * MIN, "fatigue", "mfa_push", "accept",
