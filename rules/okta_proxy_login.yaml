@@ -1,0 +1,12 @@
+title: Successful Okta session from a source identified as a proxy
+id: okta_proxy_login
+logsource:
+  product: okta
+  service: systemlog
+detection:
+  selection:
+    metadata.product.name: Okta System Log
+    unmapped.event_name: user.session.start
+    unmapped.is_proxy: 'true'
+    outcome: success
+  condition: selection

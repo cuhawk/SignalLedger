@@ -14,6 +14,9 @@ FIELDS = {
     "kind": "kind", "outcome": "outcome", "actor_user": "account",
     "src_ip": "ip", "src_endpoint.ip": "ip", "actor.user.uid": "account",
     "unmapped.kind": "kind", "unmapped.outcome": "outcome",
+    "metadata.product.name": "product_name",
+    "unmapped.event_name": "event_name", "unmapped.identity_type": "identity_type",
+    "unmapped.is_proxy": "is_proxy",
     "scope": "scope", "asn": "asn", "device": "device",
 }
 DEFAULT_DEDUP_MINUTES = 5
@@ -79,6 +82,10 @@ WITH raw AS (
            src_endpoint.latitude AS lat, src_endpoint.longitude AS lon,
            unmapped.kind AS kind, unmapped.outcome AS outcome,
            unmapped.scope AS scope, unmapped.token AS token,
+           metadata.product.name AS product_name,
+           json_extract_string(original, '$.unmapped.event_name') AS event_name,
+           json_extract_string(original, '$.unmapped.identity_type') AS identity_type,
+           json_extract_string(original, '$.unmapped.is_proxy') AS is_proxy,
            metadata.uid AS event_id
     FROM read_parquet(?, hive_partitioning=false)
 )
@@ -180,6 +187,8 @@ def compile_predicates(fields, args):
         raise ValueError("expected a nonempty selection or filter mapping")
     predicates = []
     for key, values in fields.items():
+        if not isinstance(key, str):
+            raise ValueError("selection field names must be strings")
         field, separator, modifier = key.partition("|")
         column = FIELDS.get(field)
         if column is None or (separator and modifier not in ("contains", "startswith", "cidr")):
@@ -209,6 +218,8 @@ def compile_predicates(fields, args):
 def compile_correlation(correlation, args):
     if correlation is None:
         return "match"
+    if not isinstance(correlation, dict):
+        raise ValueError("correlation must be a mapping")
     options = correlation.copy()
     template = options.pop("type", None)
     if template == "window":
@@ -238,7 +249,7 @@ def compile_correlation(correlation, args):
 def compile_rules(parquet, directory=ROOT / "rules"):
     queries = []
     seen = set()
-    for path in sorted(directory.glob("*.yaml")):
+    for path in sorted((*directory.glob("*.yaml"), *directory.glob("*.yml"))):
         try:
             rule = yaml.safe_load(path.read_text())
             name = rule["id"]
@@ -275,8 +286,13 @@ def compile_rules(parquet, directory=ROOT / "rules"):
 
 SCHEMA = """
     time BIGINT,
-    actor STRUCT(user STRUCT(uid VARCHAR)),
-    metadata STRUCT(uid VARCHAR, product STRUCT(name VARCHAR)),
+    actor STRUCT(user STRUCT(uid VARCHAR, name VARCHAR)),
+    "user" STRUCT(uid VARCHAR, name VARCHAR),
+    api STRUCT(operation VARCHAR, service STRUCT(name VARCHAR)),
+    class_uid INTEGER, category_uid INTEGER, activity_id INTEGER, type_uid INTEGER,
+    severity_id INTEGER, status_id INTEGER,
+    activity_name VARCHAR,
+    metadata STRUCT(uid VARCHAR, version VARCHAR, product STRUCT(name VARCHAR, vendor_name VARCHAR)),
     src_endpoint STRUCT(ip VARCHAR, asn VARCHAR, device VARCHAR, latitude DOUBLE, longitude DOUBLE),
     unmapped STRUCT(kind VARCHAR, outcome VARCHAR, scope VARCHAR, token VARCHAR),
     payload_sha256 VARCHAR, original JSON
@@ -294,14 +310,27 @@ def export_parquet(events, directory):
     with TemporaryDirectory(dir=directory.parent) as temp, duckdb.connect() as db:
         destination = Path(temp) / "snapshot"
         db.execute(f"CREATE TABLE telemetry ({SCHEMA})")
-        rows = [(e["time"], e["actor"], {
+        def user_fields(user):
+            return {"uid": user.get("uid"), "name": user.get("name")}
+
+        rows = [(e["time"], {"user": user_fields(e["actor"]["user"])},
+                user_fields(e["user"]) if "user" in e else None,
+                {"operation": e["api"]["operation"], "service": e["api"].get("service")}
+                if "api" in e else None,
+                *(e.get(key) for key in ("class_uid", "category_uid", "activity_id",
+                                        "type_uid", "severity_id", "status_id")),
+                e.get("activity_name"), {
                 "uid": e["metadata"]["uid"],
-                "product": {"name": e["metadata"]["product"]["name"]},
+                "version": e["metadata"].get("version"),
+                "product": {"name": e["metadata"]["product"]["name"],
+                            "vendor_name": e["metadata"]["product"].get("vendor_name")},
             }, {k: e["src_endpoint"].get(k) for k in ("ip", "asn", "device", "latitude", "longitude")},
                 {k: e["unmapped"].get(k) for k in ("kind", "outcome", "scope", "token")},
                 e["payload_sha256"], json.dumps(e)) for e in events]
         if rows:
-            db.executemany("INSERT INTO telemetry VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
+            db.executemany(
+                "INSERT INTO telemetry VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows
+            )
             db.execute(
                 """COPY (SELECT *, CAST(to_timestamp(time/1000.0) AT TIME ZONE 'UTC' AS DATE) AS day
                           FROM telemetry)
@@ -337,11 +366,26 @@ def evaluate(queries):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["compile", "run", "export"])
+    parser.add_argument("command", choices=["compile", "run", "export", "export-native"])
     parser.add_argument("path", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--journal", type=Path, action="append", default=[])
+    parser.add_argument("--vendor", choices=["cloudtrail", "okta"])
     args = parser.parse_args()
+    if args.command == "export-native":
+        from analytics.native import read_events
+
+        if args.vendor is None or args.output is None:
+            parser.error("export-native requires --vendor and --output")
+        if args.journal:
+            parser.error("--journal applies to journal exports")
+        try:
+            print(export_parquet(read_events(args.path, args.vendor), args.output))
+        except (OSError, ValueError) as err:
+            parser.exit(1, f"{err}\n")
+        return
+    if args.vendor is not None:
+        parser.error("--vendor applies to native exports")
     if args.command == "export":
         if args.output is None:
             parser.error("export requires --output")

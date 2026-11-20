@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from analytics.engine import ROOT, compile_rules
+from analytics.engine import ROOT, compile_rules, export_parquet
 from analytics.benchmark import run_suite
 
 
@@ -127,3 +127,36 @@ def test_cli_consistency(cli, tmp_path, signed):
     assert command(cli, "verify-consistency", *heads, "--proof", proof).stdout.strip() == "PASS"
     reversed_heads = ["--old-root", heads[3], "--new-root", heads[1], "--pubkey", pub]
     assert command(cli, "verify-consistency", *reversed_heads, "--proof", proof).returncode == 1
+
+
+def test_rule_check_cli(cli, tmp_path):
+    from analytics.rulecheck import read_fixture
+
+    fixture_dir = ROOT / "analytics" / "testdata" / "wave4"
+    for name, counts in (("mixed", "12 fixture events, 2 findings"),
+                         ("benign", "10 fixture events, 0 findings")):
+        result = command(cli, "rule", "check", "--fixture", fixture_dir / f"{name}.fixture.json")
+        assert result.returncode == 0, result.stderr
+        assert counts in result.stdout
+
+    mixed = fixture_dir / "mixed.fixture.json"
+    spec = json.loads(mixed.read_text())
+    for item in spec["inputs"]:
+        item["path"] = str(fixture_dir / item["path"])
+    spec["expected"] = []
+    path = write(tmp_path / "mismatch.json", spec)
+    result = command(cli, "rule", "check", "--fixture", path)
+    assert result.returncode == 1
+    assert "fixture mismatch" in result.stderr
+
+    (tmp_path / "bad.yaml").write_text("id: [unterminated\n")
+    result = command(cli, "rule", "check", "--rules", tmp_path)
+    assert result.returncode == 1
+    assert "bad.yaml" in result.stderr
+
+    events, expected = read_fixture(mixed)
+    parquet = export_parquet(events, tmp_path / "parquet")
+    result = command(cli, "detect", "--queries", write(tmp_path / "queries.json", compile_rules(parquet)))
+    assert result.returncode == 0, result.stderr
+    assert [[row["Rule"], row["EventID"], row["TimeMS"]]
+            for row in json.loads(result.stdout)] == expected

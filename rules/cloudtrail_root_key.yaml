@@ -1,0 +1,12 @@
+title: AWS root access key created
+id: cloudtrail_root_access_key
+logsource:
+  product: aws
+  service: cloudtrail
+detection:
+  selection:
+    metadata.product.name: CloudTrail
+    unmapped.event_name: CreateAccessKey
+    unmapped.identity_type: Root
+    outcome: success
+  condition: selection

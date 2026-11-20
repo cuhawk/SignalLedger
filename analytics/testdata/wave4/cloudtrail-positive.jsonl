@@ -1,0 +1,1 @@
+{"eventID": "aws-root-key", "eventName": "CreateAccessKey", "eventTime": "2025-08-01T12:34:56.123Z", "eventSource": "iam.amazonaws.com", "userIdentity": {"type": "Root", "principalId": "123456789012"}, "sourceIPAddress": "192.0.2.14"}

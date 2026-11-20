@@ -1,0 +1,66 @@
+{
+  "Records": [
+    {
+      "eventID": "aws-role",
+      "eventName": "AssumeRole",
+      "eventTime": "2025-08-01T12:34:56.123Z",
+      "eventSource": "sts.amazonaws.com",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDATEST"
+      },
+      "sourceIPAddress": "192.0.2.14"
+    },
+    {
+      "eventID": "aws-iam-key",
+      "eventName": "CreateAccessKey",
+      "eventTime": "2025-08-01T12:34:56.123Z",
+      "eventSource": "iam.amazonaws.com",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDATEST"
+      },
+      "sourceIPAddress": "192.0.2.14"
+    },
+    {
+      "eventID": "aws-root-denied",
+      "eventName": "CreateAccessKey",
+      "eventTime": "2025-08-01T12:34:56.123Z",
+      "eventSource": "iam.amazonaws.com",
+      "userIdentity": {
+        "type": "Root",
+        "principalId": "123456789012"
+      },
+      "sourceIPAddress": "192.0.2.14",
+      "errorCode": "AccessDenied"
+    },
+    {
+      "eventID": "aws-console",
+      "eventName": "ConsoleLogin",
+      "eventTime": "2025-08-01T12:34:56.123Z",
+      "eventSource": "signin.amazonaws.com",
+      "userIdentity": {
+        "type": "Root",
+        "principalId": "123456789012"
+      },
+      "sourceIPAddress": "192.0.2.14",
+      "responseElements": {
+        "ConsoleLogin": "Success"
+      }
+    },
+    {
+      "eventID": "aws-console-failed",
+      "eventName": "ConsoleLogin",
+      "eventTime": "2025-08-01T12:34:56.123Z",
+      "eventSource": "signin.amazonaws.com",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDATEST"
+      },
+      "sourceIPAddress": "192.0.2.14",
+      "responseElements": {
+        "ConsoleLogin": "Failure"
+      }
+    }
+  ]
+}

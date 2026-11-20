@@ -15,9 +15,11 @@ go test -race -v ./...
 SIGNALLEDGER_BIN=/tmp/signalledger python -m pytest -v analytics
 ```
 
-To regenerate [measured results](benchmarks/RESULTS.md), run `go test -race -v -count=1 -json ./... > /tmp/signalledger-go.jsonl`, then `python -m analytics.benchmark --go-report /tmp/signalledger-go.jsonl`.
+To regenerate [measured results](benchmarks/RESULTS.md), run `go test -race -v -count=1 -json ./... > /tmp/signalledger-go.jsonl`, then `python -m analytics.benchmark --go-report /tmp/signalledger-go.jsonl --cli /tmp/signalledger`.
 
-On the synthetic benchmark, distributed slow-spray recall rose from 0/3 with the single-source rule to 3/3 with the distributed rule. Median detection latency was 70 minutes of event time. DuckDB evaluation took 133.3 ms across 1,539 events. The benign baseline produced 0 false positives across 1,452 events. The Merkle suite rejected 6/6 signed-window tamper cases and 10/10 consistency tamper, truncation, and rollback cases. The consistency prefix matrix and RFC 6962 proof-vector test passed.
+On the synthetic benchmark, distributed slow-spray recall rose from 0/3 with the single-source rule to 3/3 with the distributed rule. Median detection latency was 70 minutes of event time. DuckDB evaluation took 77.1 ms across 1,539 events. The benign baseline produced 0 false positives across 1,452 events. The Merkle suite rejected 6/6 signed-window tamper cases and 10/10 consistency tamper, truncation, and rollback cases. The consistency prefix matrix and RFC 6962 proof-vector test passed.
+
+On the native synthetic fixtures, each new rule detected its one labeled event with 0 ms of event-time latency. DuckDB evaluated the 12-event mixed fixture in 38.2 ms. The 10-event benign baseline produced 0 false positives. The CLI passed both fixtures and rejected malformed YAML and an incorrect expected finding set.
 
 ## Collect and detect
 
@@ -43,6 +45,28 @@ python -m analytics.engine run 'data/snapshot-001/day=*/*.parquet'
 ```
 
 Add `--journal` once per additional feed directory to include multiple feeds from the same tenant. The Parquet exporter publishes a new snapshot directory atomically. The partition rows retain the normalized OCSF record and expose typed detection fields. The rule compiler supports the selection and correlation forms used in `rules/`. It binds Parquet paths, selection values, thresholds, patterns and allowlists as SQL parameters. Treat compiled SQL bundles as trusted deployment artifacts. Geo, ASN, device and token correlations require corresponding source fields or upstream enrichment. Review the sample corporate egress allowlist before use. The synthetic suite covers public and private shares, reissued event IDs for the same token observation, and distributed slow spray.
+
+## Import CloudTrail and Okta exports
+
+Run these commands from the repository root with the Python analytics dependencies installed. Native imports accept a JSON event object, a JSON array, or line-delimited JSON with a `.jsonl` or `.ndjson` extension. CloudTrail JSON also supports the `Records` envelope. The exporter skips unsupported event names and reports malformed supported records with their input location.
+
+```sh
+python -m analytics.engine export-native cloudtrail.json --vendor cloudtrail --output data/aws-001
+python -m analytics.engine export-native okta.jsonl --vendor okta --output data/okta-001
+python -m analytics.engine run 'data/aws-001/day=*/*.parquet'
+```
+
+CloudTrail `AssumeRole` and `CreateAccessKey` map to OCSF 1.1 API Activity. CloudTrail `ConsoleLogin` and Okta `user.session.start` map to Authentication. Okta `policy.evaluate_sign_on` maps to Authorize Session. The new rules flag successful root access key creation in CloudTrail and successful Okta sessions whose source is marked as a proxy in the System Log.
+
+## Validate rules and fixtures
+
+```sh
+/tmp/signalledger rule check
+/tmp/signalledger rule check --fixture analytics/testdata/wave4/mixed.fixture.json
+/tmp/signalledger rule check --fixture analytics/testdata/wave4/benign.fixture.json
+```
+
+Pass `--rules DIR` to validate a custom rule directory. The fixture JSON lists native inputs by `path` and `vendor`, plus exact expected `[rule_id, event_id, time_ms]` findings. Relative input paths resolve from the fixture directory. Invalid rules and missing or unexpected findings return a nonzero exit code. The command uses the Python analytics environment through `python3` on PATH or the interpreter set in `SIGNALLEDGER_PYTHON`.
 
 ## Gate writes and verify evidence
 
