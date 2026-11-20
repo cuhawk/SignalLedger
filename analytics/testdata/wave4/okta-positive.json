@@ -1,0 +1,21 @@
+[
+  {
+    "uuid": "okta-proxy-login",
+    "eventType": "user.session.start",
+    "published": "2025-08-01T12:34:56.123Z",
+    "outcome": {
+      "result": "SUCCESS"
+    },
+    "actor": {
+      "id": "00utest",
+      "alternateId": "alice@example.test"
+    },
+    "client": {
+      "ipAddress": "2001:db8::1"
+    },
+    "securityContext": {
+      "isProxy": true,
+      "asNumber": 64500
+    }
+  }
+]

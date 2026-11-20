@@ -64,7 +64,7 @@ func verify(args []string) error {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: signalledger {ingest|detect|collect|verify|prove-consistency|verify-consistency}")
+		return errors.New("usage: signalledger {ingest|detect|rule|collect|verify|prove-consistency|verify-consistency}")
 	}
 	switch args[0] {
 	case "prove-consistency", "verify-consistency":
@@ -77,6 +77,8 @@ func run(args []string) error {
 		return nil
 	case "ingest":
 		return ingestCommand(args[1:])
+	case "rule":
+		return ruleCommand(args[1:])
 	case "detect":
 		return detectCommand(args[1:])
 	case "collect":

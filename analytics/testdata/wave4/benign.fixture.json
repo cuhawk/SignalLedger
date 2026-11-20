@@ -1,0 +1,13 @@
+{
+  "inputs": [
+    {
+      "vendor": "cloudtrail",
+      "path": "cloudtrail-benign.json"
+    },
+    {
+      "vendor": "okta",
+      "path": "okta-benign.jsonl"
+    }
+  ],
+  "expected": []
+}

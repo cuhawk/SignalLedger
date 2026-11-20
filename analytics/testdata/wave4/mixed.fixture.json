@@ -1,0 +1,32 @@
+{
+  "inputs": [
+    {
+      "vendor": "cloudtrail",
+      "path": "cloudtrail-benign.json"
+    },
+    {
+      "vendor": "okta",
+      "path": "okta-benign.jsonl"
+    },
+    {
+      "vendor": "cloudtrail",
+      "path": "cloudtrail-positive.jsonl"
+    },
+    {
+      "vendor": "okta",
+      "path": "okta-positive.json"
+    }
+  ],
+  "expected": [
+    [
+      "cloudtrail_root_access_key",
+      "aws-root-key",
+      1754051696123
+    ],
+    [
+      "okta_proxy_login",
+      "okta-proxy-login",
+      1754051696123
+    ]
+  ]
+}

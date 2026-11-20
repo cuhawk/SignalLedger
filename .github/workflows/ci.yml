@@ -38,7 +38,9 @@ jobs:
           go build -o "$RUNNER_TEMP/signalledger" ./cmd/signalledger
           SIGNALLEDGER_BIN="$RUNNER_TEMP/signalledger" python -m pytest -v analytics
       - name: Generate observed metrics
-        run: python -m analytics.benchmark --go-report "$RUNNER_TEMP/signalledger-go.jsonl"
+        run: |
+          python -m analytics.benchmark --go-report "$RUNNER_TEMP/signalledger-go.jsonl" \
+            --cli "$RUNNER_TEMP/signalledger"
       - uses: actions/upload-artifact@v4
         with:
           name: observed-metrics
