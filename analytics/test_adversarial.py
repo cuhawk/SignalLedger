@@ -1,0 +1,94 @@
+import base64
+import json
+import os
+from pathlib import Path
+import subprocess
+
+import pytest
+
+from analytics.engine import ROOT, compile_rules
+from analytics.benchmark import run_suite
+
+
+@pytest.fixture(scope="module")
+def cli(tmp_path_factory):
+    if binary := os.environ.get("SIGNALLEDGER_BIN"):
+        return Path(binary).resolve()
+    binary = tmp_path_factory.mktemp("bin") / "signalledger"
+    subprocess.run(["go", "build", "-o", str(binary), "./cmd/signalledger"], cwd=ROOT, check=True)
+    return binary
+
+
+def command(cli, *args):
+    return subprocess.run([cli, *args], capture_output=True, text=True)
+
+
+def write(path, value):
+    path.write_text(json.dumps(value))
+    return str(path)
+
+
+def test_go_duckdb_matches_python(cli, tmp_path):
+    _, _, alerts, _ = run_suite(tmp_path / "parquet")
+    queries = compile_rules(tmp_path / "parquet" / "day=*" / "*.parquet")
+    result = command(cli, "detect", "--queries", write(tmp_path / "queries", queries))
+    assert result.returncode == 0, result.stderr
+    assert [(row["Rule"], row["EventID"], row["TimeMS"]) for row in json.loads(result.stdout)] == alerts
+
+
+@pytest.fixture
+def signed(cli, tmp_path):
+    # RFC 8032 test vector 1. This fixed key is used only for tests.
+    seed = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
+    public = bytes.fromhex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a")
+    key = write(tmp_path / "private", base64.b64encode(seed + public).decode())
+    pub = write(tmp_path / "public", base64.b64encode(public).decode())
+    start, end = "2025-01-01T00:00:00Z", "2025-01-01T01:00:00Z"
+    records = [{"time": start, "kind": "heartbeat", "data": label}
+               for label in ("alpha", "bravo", "charlie")]
+    args = ["collect", "--private-key", key, "--start", start, "--end", end]
+    result = command(cli, *args, "--window", write(tmp_path / "records", records))
+    assert result.returncode == 0, result.stderr
+    bundle = json.loads(result.stdout)
+    return pub, args, bundle, end
+
+
+def test_cli_tamper_and_liveness(cli, tmp_path, signed):
+    pub, collect, bundle, end = signed
+    root, records = bundle["root"], bundle["records"]
+    proof = write(tmp_path / "proof", bundle["proofs"][0])
+
+    def verify(statement, *, window=None, leaf=None):
+        args = ["verify", "--pubkey", pub, "--root", write(tmp_path / "root", statement)]
+        if window is not None:
+            args.extend(["--window", write(tmp_path / "window", window)])
+        else:
+            args.extend(["--proof", proof, "--leaf", write(tmp_path / "leaf", leaf)])
+        return command(cli, *args)
+
+    assert verify(root, window=records).stdout.strip() == "PASS"
+    assert verify(root, leaf=records[0]).stdout.strip() == "PASS"
+    assert verify(root, leaf={**records[0], "data": "alphb"}).returncode == 1
+    assert verify(root, window=[records[1], records[0], records[2]]).returncode == 1
+    assert verify(root, window=records[:2]).returncode == 1
+    assert verify(root, leaf={**records[0], "time": end}).returncode == 1
+    signature = bytearray(base64.b64decode(root["signature"]))
+    signature[0] ^= 1
+    forged = {**root, "signature": base64.b64encode(signature).decode()}
+    assert verify(forged, window=records).returncode == 1
+    empty = command(cli, *collect, "--window", write(tmp_path / "empty", []))
+    assert empty.returncode == 1 and "FAIL_EMPTY_WINDOW" in empty.stderr
+
+
+def test_write_gate_red_team():
+    result = subprocess.run(
+        ["go", "test", "-race", "-count=1", "-json", "-run", "^TestRedTeam$", "./internal/writegate"],
+        cwd=ROOT, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    passed = {message.get("Test") for line in result.stdout.splitlines()
+              if (message := json.loads(line))["Action"] == "pass"}
+    assert {"TestRedTeam/" + case for case in (
+        "replay", "scope_escalation", "state_drift", "atomic_race", "hostile_instruction",
+        "wildcard", "read_only",
+    )} <= passed

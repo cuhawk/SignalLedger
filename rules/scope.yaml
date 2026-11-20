@@ -1,0 +1,12 @@
+title: Sensitive OAuth or connector scope
+id: scope_escalation
+logsource:
+  category: cloud
+detection:
+  selection:
+    kind: [oauth_grant, share, export]
+    outcome: success
+  condition: selection
+correlation:
+  type: scope
+  scope_pattern: '(^|[^a-z0-9_.])((calendar\.readwrite(\.shared)?)|(https://www\.googleapis\.com/auth/calendar(\.events|\.acls)?)|bulk_export|export:workspace)([^a-z0-9_.]|$)'

@@ -1,8 +1,44 @@
 name: CI
 on: [push, pull_request]
+permissions:
+  contents: read
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: echo 'CI workflow ready to be populated'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: analytics/requirements.txt
+      - run: pip install -r analytics/requirements.txt
+      - name: Install DuckDB native library
+        run: |
+          mkdir -p "$RUNNER_TEMP/duckdb"
+          curl --fail --silent --show-error --location \
+            https://github.com/duckdb/duckdb/releases/download/v1.5.4/libduckdb-linux-amd64.zip \
+            --output "$RUNNER_TEMP/duckdb.zip"
+          echo "838d98a85e697bab9935010c88a8c67d3312ccedcab4cb4a0ba01da65113bb70  $RUNNER_TEMP/duckdb.zip" | sha256sum -c
+          unzip -q "$RUNNER_TEMP/duckdb.zip" -d "$RUNNER_TEMP/duckdb"
+          echo "GOFLAGS=-tags=duckdb_use_lib" >> "$GITHUB_ENV"
+          echo "CGO_LDFLAGS=-L$RUNNER_TEMP/duckdb" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/duckdb" >> "$GITHUB_ENV"
+      - name: Go race and adversarial suites
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -race -v -count=1 -json ./... | tee "$RUNNER_TEMP/signalledger-go.jsonl"
+      - name: CLI and DuckDB integration
+        run: |
+          go build -o "$RUNNER_TEMP/signalledger" ./cmd/signalledger
+          SIGNALLEDGER_BIN="$RUNNER_TEMP/signalledger" python -m pytest -v analytics
+      - name: Generate observed metrics
+        run: python -m analytics.benchmark --go-report "$RUNNER_TEMP/signalledger-go.jsonl"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: observed-metrics
+          path: benchmarks/RESULTS.md

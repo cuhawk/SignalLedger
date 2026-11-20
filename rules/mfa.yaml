@@ -1,0 +1,12 @@
+title: MFA denials followed by acceptance from a new source
+id: mfa_fatigue
+logsource:
+  category: authentication
+detection:
+  selection:
+    kind: mfa_push
+  condition: selection
+correlation:
+  type: mfa
+  window_ms: 600000
+  min_denials: 3

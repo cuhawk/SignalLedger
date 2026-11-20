@@ -1,0 +1,14 @@
+title: Password spray from one source
+id: password_spray
+logsource:
+  category: authentication
+detection:
+  selection:
+    kind: login
+    outcome: failure
+  condition: selection
+correlation:
+  type: spray
+  window_ms: 1800000
+  min_accounts: 8
+  max_attempts: 3

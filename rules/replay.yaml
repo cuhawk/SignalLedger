@@ -1,0 +1,12 @@
+title: Token reused across device and ASN
+id: token_replay
+logsource:
+  category: authentication
+detection:
+  selection:
+    kind: login
+    outcome: success
+  condition: selection
+correlation:
+  type: replay
+  window_ms: 3600000

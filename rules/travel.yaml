@@ -1,0 +1,15 @@
+title: Impossible travel outside corporate egress
+id: impossible_travel
+logsource:
+  category: authentication
+detection:
+  selection:
+    kind: login
+    outcome: success
+  condition: selection
+correlation:
+  type: travel
+  trusted_asns: ['64512']
+  trusted_ips: ['192.0.2.200']
+  window_ms: 21600000
+  max_kph: 900
