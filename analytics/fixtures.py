@@ -45,7 +45,7 @@ def traces():
         add(f"vpn-egress-{day}", base + 2 * MIN, f"vpn-{day}", asn="64512", lat=40.7, lon=-74)
         add(f"readonly-{day}", base + MIN, f"vpn-{day}", kind="oauth_grant", scope="Calendar.Read")
         add(f"sender-{day}", base + MIN, "approved-integration", kind="oauth_grant",
-            scope="unrelated/Calendar.ReadWriteExtension")
+            scope="unrelated/Calendar.ReadWrite")
         begin = base + 720 * MIN
         for i in range(8):
             add(f"spray-{day}-{i}", begin + i * MIN, f"spray-user-{i}",
@@ -65,9 +65,14 @@ def traces():
         add(f"grant-{day}", begin, "oauth-admin", "oauth_grant",
             scope=["Calendar.ReadWrite", "https://www.googleapis.com/auth/calendar", "bulk_export"][day])
         mark("scope_escalation", begin, f"grant-{day}")
+        add(f"private-share-{day}", begin, "notion-admin", "share", scope="private")
+        add(f"public-share-{day}", begin, "notion-admin", "share", scope="public_share")
+        mark("scope_escalation", begin, f"public-share-{day}")
         add(f"token-first-{day}", begin, "token-user", token=f"session-{day}")
         add(f"mutated-vendor-id-{day}", begin + MIN, "token-user",
             token=f"session-{day}", asn="64498", device="device-b")
         mark("token_replay", begin, f"mutated-vendor-id-{day}")
         events.append(dict(events[-1]))
+        add(f"reissued-vendor-id-{day}", begin + MIN, "token-user",
+            token=f"session-{day}", asn="64498", device="device-b")
     return events, incidents

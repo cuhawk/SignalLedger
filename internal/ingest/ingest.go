@@ -231,8 +231,15 @@ func (f Feed) Fetch(ctx context.Context, since time.Time, cursor string) (Page, 
 	switch f.Vendor {
 	case Workspace, Calendar:
 		raw, next = response.Items, response.NextPage
+	case EntraSignIn, EntraAudit:
+		if response.Value == nil {
+			return Page{}, errors.New("missing Microsoft Graph value array")
+		}
 	case Notion:
 		raw, next = response.Results, response.NextCursor
+		if raw == nil {
+			return Page{}, errors.New("missing Notion results array")
+		}
 		if response.HasMore && next == "" {
 			return Page{}, errors.New("missing Notion cursor")
 		}

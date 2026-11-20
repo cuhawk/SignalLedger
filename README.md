@@ -26,8 +26,8 @@ Provide a read-scoped bearer in `SIGNALLEDGER_AUDIT_TOKEN` and keep a separate j
 | `entra-signin` | Microsoft Graph `/v1.0/auditLogs/signIns` |
 | `entra-audit` | Microsoft Graph `/v1.0/auditLogs/directoryAudits` |
 | `workspace` | Admin Reports `/admin/reports/v1/activity/users/all/applications/{login,token,admin}`, one journal per application |
-| `calendar` | Admin Reports Calendar application, with ACL change events. Connector OAuth grants are collected from the token application |
-| `notion` | A trusted Notion audit export relay exposing cursor-paginated `results` with `id`, `timestamp`, `action`, `actor.id`, and optional `details.scopes` |
+| `calendar` | Admin Reports Calendar application, with ACL change events. Connector OAuth grants are collected from the token application. Public ACL changes are flagged when the audit payload identifies a public or default audience |
+| `notion` | A trusted Notion audit export relay exposing cursor-paginated `results` with `id`, `timestamp`, `action`, `actor.id`, and optional `details.scopes`, `details.visibility`, and `details.public` |
 
 ```sh
 /tmp/signalledger ingest --vendor entra-signin \
@@ -40,7 +40,7 @@ python -m analytics.engine compile 'data/snapshot-001/day=*/*.parquet' > /tmp/qu
 python -m analytics.engine run 'data/snapshot-001/day=*/*.parquet'
 ```
 
-Add `--journal` once per additional feed directory to include multiple feeds from the same tenant. The Parquet exporter publishes a new snapshot directory atomically. The partition rows retain the normalized OCSF record and expose typed detection fields. The rule compiler supports the selection and correlation forms used in `rules/`. It binds Parquet paths, selection values, thresholds, patterns and allowlists as SQL parameters. Treat compiled SQL bundles as trusted deployment artifacts. Geo, ASN, device and token correlations require corresponding source fields or upstream enrichment. Review the sample corporate egress allowlist before use.
+Add `--journal` once per additional feed directory to include multiple feeds from the same tenant. The Parquet exporter publishes a new snapshot directory atomically. The partition rows retain the normalized OCSF record and expose typed detection fields. The rule compiler supports the selection and correlation forms used in `rules/`. It binds Parquet paths, selection values, thresholds, patterns and allowlists as SQL parameters. Treat compiled SQL bundles as trusted deployment artifacts. Geo, ASN, device and token correlations require corresponding source fields or upstream enrichment. Review the sample corporate egress allowlist before use. The synthetic suite covers public and private shares, reissued event IDs for the same token observation, and slow spray beyond the configured detection window.
 
 ## Gate writes and verify evidence
 

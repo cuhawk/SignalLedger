@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"slices"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cyberphone/json-canonicalization/go/src/webpki.org/jsoncanonicalizer"
 )
@@ -19,9 +20,10 @@ var ErrEmpty = errors.New("FAIL_EMPTY_WINDOW")
 type Hash [32]byte
 
 type Record struct {
-	Time time.Time `json:"time"`
-	Kind string    `json:"kind"`
-	Data any       `json:"data"`
+	Time time.Time `json:"time"
+ "unicode/utf8"`
+	Kind string `json:"kind"`
+	Data any    `json:"data"`
 }
 
 type Statement struct {
@@ -48,7 +50,23 @@ func Canonical(v any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return jsoncanonicalizer.Transform(raw)
+	return canonicalJSON(raw)
+}
+
+func canonicalJSON(raw []byte) ([]byte, error) {
+	if !utf8.Valid(raw) || !json.Valid(raw) {
+		return nil, errors.New("invalid UTF-8 JSON")
+	}
+	raw = bytes.TrimSpace(raw)
+	if raw[0] == '{' || raw[0] == '[' {
+		return jsoncanonicalizer.Transform(raw)
+	}
+	wrapped := append(append([]byte{'['}, raw...), ']')
+	canonical, err := jsoncanonicalizer.Transform(wrapped)
+	if err != nil {
+		return nil, err
+	}
+	return canonical[1 : len(canonical)-1], nil
 }
 
 func hashLeaf(leaf []byte) Hash { return sha256.Sum256(append([]byte{0}, leaf...)) }
@@ -106,14 +124,14 @@ func recordHash(raw json.RawMessage, start, end time.Time) (Hash, error) {
 		Time time.Time
 		Kind string
 	}
-	canonical, err := jsoncanonicalizer.Transform(raw)
+	canonical, err := canonicalJSON(raw)
 	if err != nil {
 		return Hash{}, err
 	}
 	if err = json.Unmarshal(canonical, &record); err != nil {
 		return Hash{}, err
 	}
-	if record.Kind == "" || record.Time.Before(start) || !record.Time.Before(end) {
+	if record.Kind == "" || record.Time.IsZero() || record.Time.Before(start) || !record.Time.Before(end) {
 		return Hash{}, errors.New("invalid evidence record or timestamp outside window")
 	}
 	return hashLeaf(canonical), nil

@@ -144,12 +144,16 @@ func google(v Vendor, raw json.RawMessage) ([]Event, error) {
 	}
 	for i, e := range x.Events {
 		class := 6003
-		d := Details{Kind: e.Name}
+		name := strings.ToLower(e.Name)
+		d := Details{Kind: name}
+		var shareType string
 		src := Endpoint{IP: x.IPAddress}
 		for _, p := range e.Parameters {
-			switch p.Name {
+			switch strings.ToLower(p.Name) {
 			case "scope", "scopes":
 				d.Scope = strings.Join(append([]string{p.Value}, p.MultiValue...), " ")
+			case "scope_type", "acl_scope_type", "acl_scope", "calendar_acl_scope", "grantee_type", "visibility":
+				shareType = strings.ToLower(p.Value)
 			case "token_id":
 				d.Token = p.Value
 			case "asn":
@@ -158,17 +162,20 @@ func google(v Vendor, raw json.RawMessage) ([]Event, error) {
 				src.Device = p.Value
 			}
 		}
-		switch e.Name {
+		switch name {
 		case "login_success", "login_failure":
 			class, d.Kind, d.Outcome = 3002, "login", "success"
-			if e.Name == "login_failure" {
+			if name == "login_failure" {
 				d.Outcome = "failure"
 			}
 		case "authorize", "grant", "oauth_grant":
 			d.Kind, d.Outcome = "oauth_grant", "success"
-		case "change_calendar_acls", "calendar_share":
+		case "change_calendar_acl", "change_calendar_acls", "change_calendar_acl_rule", "calendar_share":
 			d.Kind, d.Outcome = "share", "success"
-		case "CREATE_USER", "DELETE_USER", "SUSPEND_USER", "UNSUSPEND_USER":
+			if shareType == "default" || shareType == "public" || shareType == "anyone" {
+				d.Scope = strings.TrimSpace(d.Scope + " public_share")
+			}
+		case "create_user", "delete_user", "suspend_user", "unsuspend_user":
 			class, d.Kind = 3001, "account_change"
 		}
 		id := strings.Join([]string{x.ID.CustomerID, x.ID.ApplicationName, x.ID.UniqueQualifier, strconv.Itoa(i)}, "/")
@@ -186,17 +193,24 @@ func notion(raw json.RawMessage) ([]Event, error) {
 		ID, Timestamp, Action string
 		Actor                 struct{ ID string }
 		IP                    string `json:"ip_address"`
-		Details               struct{ Scopes []string }
+		Details               struct {
+			Scopes     []string
+			Visibility string
+			Public     bool
+		}
 	}
 	if err := json.Unmarshal(raw, &x); err != nil {
 		return nil, err
 	}
 	d := Details{Kind: x.Action, Scope: strings.Join(x.Details.Scopes, " ")}
 	switch x.Action {
-	case "oauth_grant", "integration.connected":
+	case "oauth_grant", "integration.connected", "integration.scope_updated":
 		d.Kind, d.Outcome = "oauth_grant", "success"
 	case "page.shared", "share.created":
 		d.Kind, d.Outcome = "share", "success"
+		if x.Details.Public || strings.EqualFold(x.Details.Visibility, "public") || strings.EqualFold(x.Details.Visibility, "anyone") {
+			d.Scope = strings.TrimSpace(d.Scope + " public_share")
+		}
 	case "page.exported", "workspace.exported":
 		d.Kind, d.Scope, d.Outcome = "export", "bulk_export", "success"
 	}
