@@ -9,4 +9,4 @@ detection:
   condition: selection
 correlation:
   type: scope
-  scope_pattern: '(^|[^a-z0-9_.])((calendar\.readwrite(\.shared)?)|(https://www\.googleapis\.com/auth/calendar(\.events|\.acls)?)|bulk_export|export:workspace)([^a-z0-9_.]|$)'
+  scope_pattern: '(^|[^a-z0-9_.:/-])((calendar\.readwrite(\.shared)?)|(https://www\.googleapis\.com/auth/calendar(\.events|\.acls)?)|bulk_export|export:workspace|public_share)([^a-z0-9_.:/-]|$)'

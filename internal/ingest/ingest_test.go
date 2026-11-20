@@ -75,16 +75,17 @@ func TestVendorNormalization(t *testing.T) {
 		raw    string
 		class  int
 		kind   string
+		scope  string
 	}{
-		{EntraAudit, `{"id":"audit","activityDateTime":"2025-01-01T00:00:00Z","activityDisplayName":"Update user","result":"success"}`, 3001, "account_change"},
-		{Workspace, `{"id":{"time":"2025-01-01T00:00:00Z","uniqueQualifier":"1"},"events":[{"name":"login_failure"}]}`, 3002, "login"},
-		{Calendar, `{"id":{"time":"2025-01-01T00:00:00Z","uniqueQualifier":"1"},"events":[{"name":"change_calendar_acls"}]}`, 6003, "share"},
-		{Notion, `{"id":"1","timestamp":"2025-01-01T00:00:00Z","action":"page.shared"}`, 6003, "share"},
+		{EntraAudit, `{"id":"audit","activityDateTime":"2025-01-01T00:00:00Z","activityDisplayName":"Update user","result":"success"}`, 3001, "account_change", ""},
+		{Workspace, `{"id":{"time":"2025-01-01T00:00:00Z","uniqueQualifier":"1"},"events":[{"name":"login_failure"}]}`, 3002, "login", ""},
+		{Calendar, `{"id":{"time":"2025-01-01T00:00:00Z","uniqueQualifier":"1"},"events":[{"name":"change_calendar_acl_rule","parameters":[{"name":"scope_type","value":"default"}]}]}`, 6003, "share", "public_share"},
+		{Notion, `{"id":"1","timestamp":"2025-01-01T00:00:00Z","action":"page.shared","details":{"visibility":"public"}}`, 6003, "share", "public_share"},
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.vendor), func(t *testing.T) {
 			events, err := normalize(tc.vendor, []byte(tc.raw))
-			if err != nil || len(events) != 1 || events[0].Class != tc.class || events[0].Details.Kind != tc.kind || len(events[0].PayloadHash) != 64 {
+			if err != nil || len(events) != 1 || events[0].Class != tc.class || events[0].Details.Kind != tc.kind || events[0].Details.Scope != tc.scope || len(events[0].PayloadHash) != 64 {
 				t.Fatalf("unexpected %v: %v", events, err)
 			}
 		})

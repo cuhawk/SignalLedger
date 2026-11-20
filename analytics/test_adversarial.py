@@ -71,7 +71,15 @@ def test_cli_tamper_and_liveness(cli, tmp_path, signed):
     assert verify(root, leaf={**records[0], "data": "alphb"}).returncode == 1
     assert verify(root, window=[records[1], records[0], records[2]]).returncode == 1
     assert verify(root, window=records[:2]).returncode == 1
-    assert verify(root, leaf={**records[0], "time": end}).returncode == 1
+    adjacent = [{**records[0], "time": end}]
+    next_end = "2025-01-01T02:00:00Z"
+    neighbor = command(cli, *collect[:3], "--start", end, "--end", next_end,
+                       "--window", write(tmp_path / "adjacent", adjacent))
+    assert neighbor.returncode == 0, neighbor.stderr
+    signed_neighbor = json.loads(neighbor.stdout)
+    assert verify(signed_neighbor["root"], window=adjacent).stdout.strip() == "PASS"
+    splice = verify(root, window=[*records[:2], signed_neighbor["records"][0]])
+    assert splice.returncode == 1 and "timestamp outside window" in splice.stderr
     signature = bytearray(base64.b64decode(root["signature"]))
     signature[0] ^= 1
     forged = {**root, "signature": base64.b64encode(signature).decode()}

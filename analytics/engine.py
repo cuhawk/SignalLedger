@@ -68,9 +68,14 @@ QUERIES = {
     WHERE regexp_matches(lower(coalesce(scope,'')),?)
     """,
     "replay": """
-    SELECT DISTINCT a.event_id,a.time FROM events a JOIN events b ON a.token=b.token
-    WHERE a.token<>'' AND a.asn<>'' AND b.asn<>'' AND a.device<>'' AND b.device<>''
-      AND a.asn<>b.asn AND a.device<>b.device AND b.time>=a.time-?
+    , observations AS (
+      SELECT min(event_id) AS event_id, time, token, asn, device
+      FROM events
+      WHERE token<>'' AND asn<>'' AND device<>''
+      GROUP BY time, token, asn, device
+    )
+    SELECT DISTINCT a.event_id,a.time FROM observations a JOIN observations b ON a.token=b.token
+    WHERE a.asn<>b.asn AND a.device<>b.device AND b.time>=a.time-?
       AND (b.time<a.time OR (b.time=a.time AND b.event_id<a.event_id))
     """,
 }

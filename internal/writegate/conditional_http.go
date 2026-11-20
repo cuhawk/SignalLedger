@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 )
 
@@ -88,7 +87,15 @@ func (c ConditionalHTTP) Read(ctx context.Context, r Request) (State, error) {
 }
 
 func strongETag(value string) bool {
-	return len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' && !strings.ContainsAny(value[1:len(value)-1], "\t\r\n \",")
+	if len(value) < 2 || value[0] != '"' || value[len(value)-1] != '"' {
+		return false
+	}
+	for _, c := range []byte(value[1 : len(value)-1]) {
+		if c < 0x21 || c == '"' || c == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 func (c ConditionalHTTP) ApplyIfRevision(ctx context.Context, t Token) error {

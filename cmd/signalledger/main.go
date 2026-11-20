@@ -16,7 +16,11 @@ func read(path string, v any) error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(data, v)
+	canonical, err := merkle.Canonical(json.RawMessage(data))
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(canonical, v)
 }
 
 func verify(args []string) error {

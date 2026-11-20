@@ -83,3 +83,22 @@ func TestCanonicalAndDomainSeparation(t *testing.T) {
 		t.Fatal("invalid RFC 6962 hash")
 	}
 }
+
+func TestInvalidEvidenceJSON(t *testing.T) {
+	for name, raw := range map[string][]byte{
+		"invalid_utf8":       {0x22, 0xff, 0x22},
+		"duplicate_property": []byte(`{"a":1,"\u0061":2}`),
+		"invalid_surrogate":  []byte(`{"a":"\ud800"}`),
+		"trailing_json":      []byte(`{}{}`),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := canonicalJSON(raw); err == nil {
+				t.Fatal("accepted invalid JCS input")
+			}
+		})
+	}
+	value, err := Canonical(json.RawMessage("-0"))
+	if err != nil || string(value) != "0" {
+		t.Fatalf("canonical scalar %q: %v", value, err)
+	}
+}

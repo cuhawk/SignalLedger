@@ -221,7 +221,7 @@ func (g *Gate) execute(ctx context.Context, r Request, a Approval) error {
 	if err != nil {
 		return fmt.Errorf("mutation readback: %w", err)
 	}
-	if after.Active != plan.AfterActive {
+	if after.Active != plan.AfterActive || after.Revision == "" || after.Revision == plan.Before.Revision {
 		return errors.New("mutation readback mismatch")
 	}
 	return nil
